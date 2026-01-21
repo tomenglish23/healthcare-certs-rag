@@ -1,0 +1,29 @@
+# TEAI Agentic RAG System v2.0
+# Python Dependencies
+
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# LangChain Core
+langchain==0.1.0
+langchain-core==0.1.10
+langchain-openai==0.0.5
+langchain-chroma==0.1.0
+langchain-text-splitters==0.0.1
+
+# LangGraph for Agent Orchestration
+langgraph==0.0.20
+
+# Vector Store
+chromadb==0.4.22
+
+# OpenAI
+openai==1.10.0
+
+# Configuration
+pyyaml==6.0.1
+
+# Utilities
+tiktoken>=0.5.0
+python-dotenv==1.0.0
