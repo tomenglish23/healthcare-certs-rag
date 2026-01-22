@@ -1,0 +1,53 @@
+[MASTER]
+ignore=venv
+jobs=1
+persistent=yes
+extension-pkg-whitelist=
+load-plugins=
+
+[MESSAGES CONTROL]
+# Disable docstring noise
+disable=
+    missing-module-docstring,
+    missing-class-docstring,
+    missing-function-docstring,
+    too-few-public-methods,
+    too-many-arguments,
+    too-many-locals,
+    too-many-branches,
+    too-many-statements,
+    too-many-return-statements,
+    too-many-instance-attributes,
+    too-many-nested-blocks,
+    too-many-lines
+
+[FORMAT]
+max-line-length=120
+indent-string='    '
+
+[TYPECHECK]
+ignored-modules=
+ignored-classes=
+
+[REPORTS]
+output-format=text
+reports=no
+score=no
+
+[DESIGN]
+max-args=10
+max-locals=25
+max-branches=20
+max-statements=100
+max-returns=10
+max-attributes=15
+max-nested-blocks=5
+
+[LOGGING]
+logging-modules=logging
+
+[SIMILARITIES]
+min-similarity-lines=6
+ignore-comments=yes
+ignore-docstrings=yes
+ignore-imports=yes

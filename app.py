@@ -38,6 +38,10 @@ from langgraph.graph import StateGraph, END
 # CONFIGURATION
 # ============================================================
 
+section_hierarchy = None
+metadata_index = None
+docs = None
+
 
 def load_config() -> Dict[str, Any]:
     """Load config from YAML"""
