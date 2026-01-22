@@ -23,6 +23,7 @@ from enum import Enum
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from collections import defaultdict
 import yaml
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -33,10 +34,10 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph, END
 
-
 # ============================================================
 # CONFIGURATION
 # ============================================================
+
 
 def load_config() -> Dict[str, Any]:
     """Load config from YAML"""
@@ -50,7 +51,7 @@ def load_config() -> Dict[str, Any]:
             'branding': {'title': 'Healthcare Certifications', 'subtitle': 'Agentic RAG'},
             'data': {'source_file': 'healthcare-certs-all.md'},
             'features': {
-                'show_confidence': True, 
+                'show_confidence': True,
                 'show_sources': True,
                 'show_reasoning': True,
                 'enable_self_critique': True
@@ -62,6 +63,7 @@ def load_config() -> Dict[str, Any]:
                 'durations': []
             }
         }
+
 
 CONFIG = load_config()
 
@@ -75,7 +77,6 @@ OPENAI_EMBED_MODEL = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-smal
 print(f"[*] {PRODUCT_NAME} v{PRODUCT_VERSION} - Agentic RAG")
 print(f"[*] Data: {DATA_FILE}")
 
-
 # ============================================================
 # FLASK APP
 # ============================================================
@@ -88,20 +89,20 @@ vector_store = None
 metadata_index = None  # For structured queries
 app_graph = None
 
-
 # ============================================================
 # QUERY TYPES AND STATE
 # ============================================================
 
+
 class QueryType(str, Enum):
     """Types of queries we can handle"""
-    COMPARISON = "comparison"      # "Compare CNA vs HHA in Tennessee"
+    COMPARISON = "comparison"  # "Compare CNA vs HHA in Tennessee"
     REQUIREMENTS = "requirements"  # "What are the requirements for CNA in TN?"
     COST_DURATION = "cost_duration"  # "How much does CNA cost? How long?"
-    PROCESS = "process"           # "How do I become a CNA in Tennessee?"
-    GENERAL = "general"           # General questions
+    PROCESS = "process"  # "How do I become a CNA in Tennessee?"
+    GENERAL = "general"  # General questions
     STUDY_MATERIAL = "study_material"  # "What should I study for the CNA exam?"
-    RENEWAL = "renewal"           # "How do I renew my certification?"
+    RENEWAL = "renewal"  # "How do I renew my certification?"
 
 
 class AgenticRAGState(TypedDict):
@@ -134,10 +135,10 @@ class AgenticRAGState(TypedDict):
     reasoning_trace: List[str]  # For debugging/transparency
     sources: List[str]
 
-
 # ============================================================
 # DOCUMENT LOADING WITH RICH METADATA
 # ============================================================
+
 
 def load_documents() -> tuple[List[Document], Dict[str, Any]]:
     """
@@ -244,6 +245,35 @@ def load_documents() -> tuple[List[Document], Dict[str, Any]]:
     return all_docs, metadata_index
 
 
+def build_section_hierarchy(docs):
+    """
+    Build a nested structure:
+    {
+      "Tennessee": {
+        "CNA": ["Overview", "Requirements", "Cost", "Duration", ...],
+        "EMT": [...]
+      },
+      "West Virginia": { ... }
+    }
+    """
+    hierarchy = defaultdict(lambda: defaultdict(list))
+
+    for doc in docs:
+        state = doc.metadata.get("state")
+        cert = doc.metadata.get("certification")
+        section = doc.metadata.get("section")
+
+        if state and cert and section:
+            clean_state = state.replace("#", "").strip()
+            clean_cert = cert.replace("##", "").strip()
+            clean_section = section.replace("###", "").strip()
+
+            if clean_section not in hierarchy[clean_state][clean_cert]:
+                hierarchy[clean_state][clean_cert].append(clean_section)
+
+    return hierarchy
+
+
 def create_vectorstore(docs: List[Document]) -> Chroma:
     """Create or load vectorstore with metadata filtering support"""
     
@@ -269,10 +299,10 @@ def create_vectorstore(docs: List[Document]) -> Chroma:
     
     return vs
 
-
 # ============================================================
 # AGENT 1: QUERY ANALYZER
 # ============================================================
+
 
 def create_query_analyzer(llm: ChatOpenAI):
     """
@@ -348,10 +378,10 @@ Respond in JSON format:
     
     return analyze
 
-
 # ============================================================
 # AGENT 2: SMART RETRIEVER
 # ============================================================
+
 
 def create_smart_retriever(vs: Chroma):
     """
@@ -401,7 +431,7 @@ def create_smart_retriever(vs: Chroma):
             try:
                 if where_filter:
                     docs = vs.similarity_search(
-                        query, 
+                        query,
                         k=k,
                         filter=where_filter
                     )
@@ -437,10 +467,10 @@ def create_smart_retriever(vs: Chroma):
     
     return retrieve
 
-
 # ============================================================
 # AGENT 3: ANSWER GENERATOR WITH GROUNDING
 # ============================================================
+
 
 def create_answer_generator(llm: ChatOpenAI):
     """
@@ -577,10 +607,10 @@ Provide a helpful, accurate answer."""
     
     return generate
 
-
 # ============================================================
 # AGENT 4: SELF-CRITIQUE (OPTIONAL)
 # ============================================================
+
 
 def create_self_critique(llm: ChatOpenAI):
     """
@@ -662,10 +692,10 @@ Evaluate this answer.""")
     
     return critique
 
-
 # ============================================================
 # AGENT 5: RESPONSE SYNTHESIZER
 # ============================================================
+
 
 def create_response_synthesizer(llm: ChatOpenAI):
     """
@@ -700,10 +730,10 @@ def create_response_synthesizer(llm: ChatOpenAI):
     
     return synthesize
 
-
 # ============================================================
 # BUILD THE AGENTIC GRAPH
 # ============================================================
+
 
 def create_agentic_graph(vs: Chroma) -> StateGraph:
     """
@@ -746,10 +776,10 @@ def create_agentic_graph(vs: Chroma) -> StateGraph:
     
     return workflow.compile()
 
-
 # ============================================================
 # API ROUTES
 # ============================================================
+
 
 @app.route('/')
 def index():
@@ -862,9 +892,159 @@ def debug_metadata():
     return jsonify({"error": "Metadata not initialized"})
 
 
+@app.route('/api/sections', methods=['GET'])
+def get_sections():
+    """Return the full L1/L2/L3 hierarchy for the Explorer UI."""
+    return jsonify(section_hierarchy)
+
+# This powers the left sidebar tree.
+
+
+@app.route('/api/section-content', methods=['POST'])
+def get_section_content():
+    """
+    Return the raw markdown content for a specific section.
+    Input:
+    {
+      "state": "Tennessee",
+      "certification": "CNA",
+      "section": "Requirements"
+    }
+    """
+    data = request.json
+    state = data.get("state")
+    cert = data.get("certification")
+    section = data.get("section")
+
+    if not (state and cert and section):
+        return jsonify({"error": "Missing state/certification/section"}), 400
+
+    matches = []
+    for doc in docs:
+        if (
+            doc.metadata.get("state", "").strip("# ").strip() == state and
+            doc.metadata.get("certification", "").strip("# ").strip() == cert and
+            doc.metadata.get("section", "").strip("# ").strip() == section
+        ):
+            matches.append(doc.page_content)
+
+    if not matches:
+        return jsonify({"error": "Section not found"}), 404
+
+    return jsonify({"content": "\n\n".join(matches)})
+
+# This powers the main content panel.
+
+
+@app.route('/api/section-metadata', methods=['POST'])
+def get_section_metadata():
+    """
+    Return extracted metadata (cost, duration, requirements) for a section.
+    """
+    data = request.json
+    state = data.get("state")
+    cert = data.get("certification")
+
+    if not (state and cert):
+        return jsonify({"error": "Missing state/certification"}), 400
+
+    key = (state, cert)
+    details = metadata_index.get("cert_details", {}).get(key, {})
+
+    return jsonify(details)
+
+# This powers the Key Facts panel.
+
+
+@app.route('/api/section-chunks', methods=['POST'])
+def get_section_chunks():
+    """
+    Return all vectorstore chunks belonging to a section.
+    """
+    data = request.json
+    state = data.get("state")
+    cert = data.get("certification")
+    section = data.get("section")
+
+    if not (state and cert and section):
+        return jsonify({"error": "Missing state/certification/section"}), 400
+
+    results = []
+    for doc in docs:
+        if (
+            doc.metadata.get("state", "").strip("# ").strip() == state and
+            doc.metadata.get("certification", "").strip("# ").strip() == cert and
+            doc.metadata.get("section", "").strip("# ").strip() == section
+        ):
+            results.append({
+                "text": doc.page_content,
+                "metadata": doc.metadata
+            })
+
+    return jsonify({"chunks": results})
+
+# This powers the Chunk Viewer.
+
+
+@app.route('/api/section-suggestions', methods=['POST'])
+def get_section_suggestions():
+    """
+    Generate suggested questions for a section.
+    """
+    data = request.json
+    state = data.get("state")
+    cert = data.get("certification")
+    section = data.get("section")
+
+    if not (state and cert and section):
+        return jsonify({"error": "Missing state/certification/section"}), 400
+
+    # Build a prompt using the section content
+    section_docs = []
+    for doc in docs:
+        if (
+            doc.metadata.get("state", "").strip("# ").strip() == state and
+            doc.metadata.get("certification", "").strip("# ").strip() == cert and
+            doc.metadata.get("section", "").strip("# ").strip() == section
+        ):
+            section_docs.append(doc.page_content)
+
+    context = "\n\n".join(section_docs)
+
+    llm = ChatOpenAI(model=OPENAI_CHAT_MODEL, temperature=0)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "Generate 10 helpful questions a user might ask after reading this section."),
+        ("user", "{context}")
+    ])
+
+    chain = prompt | llm
+    response = chain.invoke({"context": context})
+
+    return jsonify({"suggestions": response.content.split("\n")})
+
+
+study_memory = []
+
+# This powers the Suggested Questions panel.
+
+
+@app.route('/api/study/save', methods=['POST'])
+def study_save():
+    data = request.json
+    study_memory.append(data)
+    return jsonify({"status": "saved"})
+
+
+@app.route('/api/study/list', methods=['GET'])
+def study_list():
+    return jsonify(study_memory)
+
+# This powers the Learning Mode sidebar.
+
 # ============================================================
 # INITIALIZATION
 # ============================================================
+
 
 def initialize():
     """Initialize the agentic RAG system"""
@@ -876,7 +1056,9 @@ def initialize():
     
     # Load documents and extract metadata
     docs, metadata_index = load_documents()
-    
+    section_hierarchy = build_section_hierarchy(docs)
+    # Now your backend knows the full structure of the domain.
+     
     # Create vector store
     vector_store = create_vectorstore(docs)
     
@@ -897,10 +1079,10 @@ def initialize():
     print(f"[*] Agents: Query Analyzer → Smart Retriever → Answer Generator → Self-Critique → Synthesizer")
     return True
 
-
 # ============================================================
 # MAIN
 # ============================================================
+
 
 if __name__ == '__main__':
     if initialize():
